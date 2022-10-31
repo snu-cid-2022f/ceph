@@ -640,6 +640,18 @@ err:
 
 
 
+struct crush_bucket_consthash *
+crush_make_consthash_bucket(struct crush_map *map,
+			    int hash,
+			    int type,
+			    int size,
+			    int *items,
+			    int *weights)
+{
+	// TODO: implement consthash make bucket
+	return NULL;
+}
+
 struct crush_bucket*
 crush_make_bucket(struct crush_map *map,
 		  int alg, int hash, int type, int size,
@@ -666,6 +678,8 @@ crush_make_bucket(struct crush_map *map,
 		return (struct crush_bucket *)crush_make_straw_bucket(map, hash, type, size, items, weights);
 	case CRUSH_BUCKET_STRAW2:
 		return (struct crush_bucket *)crush_make_straw2_bucket(map, hash, type, size, items, weights);
+	case CRUSH_BUCKET_CONSTHASH:
+		return (struct crush_bucket *) crush_make_consthash_bucket(map, hash, type, size, items, weights);
 	}
 	return 0;
 }
