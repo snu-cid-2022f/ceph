@@ -164,6 +164,7 @@ public:
     crush->chooseleaf_descend_once = 1;
     crush->chooseleaf_vary_r = 1;
     crush->chooseleaf_stable = 1;
+    crush->consthash_weight_scale = 500;
     crush->allowed_bucket_algs =
       (1 << CRUSH_BUCKET_UNIFORM) |
       (1 << CRUSH_BUCKET_LIST) |
@@ -238,6 +239,13 @@ public:
   }
   void set_allowed_bucket_algs(unsigned n) {
     crush->allowed_bucket_algs = n;
+  }
+
+  unsigned get_consthash_weight_scale() const {
+    return crush->consthash_weight_scale;
+  }
+  void set_consthash_weight_scale(unsigned n) {
+    crush->consthash_weight_scale = n;
   }
 
   bool has_argonaut_tunables() const {

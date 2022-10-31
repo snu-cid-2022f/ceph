@@ -14,6 +14,7 @@ const char *crush_bucket_alg_name(int alg)
 	case CRUSH_BUCKET_TREE: return "tree";
 	case CRUSH_BUCKET_STRAW: return "straw";
 	case CRUSH_BUCKET_STRAW2: return "straw2";
+	case CRUSH_BUCKET_CONSTHASH: return "consthash";
 	default: return "unknown";
 	}
 }
@@ -39,6 +40,8 @@ int crush_get_bucket_item_weight(const struct crush_bucket *b, int p)
 		return ((struct crush_bucket_straw *)b)->item_weights[p];
 	case CRUSH_BUCKET_STRAW2:
 		return ((struct crush_bucket_straw2 *)b)->item_weights[p];
+	case CRUSH_BUCKET_CONSTHASH:
+		return ((struct crush_bucket_consthash *)b)->item_weights[p];
 	}
 	return 0;
 }
@@ -79,6 +82,25 @@ void crush_destroy_bucket_straw2(struct crush_bucket_straw2 *b)
 	kfree(b);
 }
 
+static void crush_consthash_destroy_node(struct crush_consthash_node *n) {
+	if (!n) {
+		return;
+	}
+	crush_consthash_destroy_node(n->left);
+	crush_consthash_destroy_node(n->right);
+	kfree(n);
+}
+
+void crush_destroy_bucket_consthash(struct crush_bucket_consthash *b)
+{
+	kfree(b->item_weights);
+	kfree(b->scaled_item_weights);
+	kfree(b->h.items);
+
+	crush_consthash_destroy_node(b->root);
+	kfree(b);
+}
+
 void crush_destroy_bucket(struct crush_bucket *b)
 {
 	switch (b->alg) {
@@ -96,6 +118,9 @@ void crush_destroy_bucket(struct crush_bucket *b)
 		break;
 	case CRUSH_BUCKET_STRAW2:
 		crush_destroy_bucket_straw2((struct crush_bucket_straw2 *)b);
+		break;
+	case CRUSH_BUCKET_CONSTHASH:
+		crush_destroy_bucket_consthash((struct crush_bucket_consthash *)b);
 		break;
 	}
 }
