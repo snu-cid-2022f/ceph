@@ -865,6 +865,14 @@ int crush_add_straw2_bucket_item(struct crush_map *map,
 	return 0;
 }
 
+int crush_add_consthash_bucket_item(struct crush_map *map,
+				    struct crush_bucket_consthash *bucket,
+				    int item, int weight)
+{
+	/* TODO: implement consthash add bucket */
+	return 0;
+}
+
 int crush_bucket_add_item(struct crush_map *map,
 			  struct crush_bucket *b, int item, int weight)
 {
@@ -879,6 +887,8 @@ int crush_bucket_add_item(struct crush_map *map,
 		return crush_add_straw_bucket_item(map, (struct crush_bucket_straw *)b, item, weight);
 	case CRUSH_BUCKET_STRAW2:
 		return crush_add_straw2_bucket_item(map, (struct crush_bucket_straw2 *)b, item, weight);
+	case CRUSH_BUCKET_CONSTHASH:
+		return crush_add_consthash_bucket_item(map, (struct crush_bucket_consthash *)b, item, weight);
 	default:
 		return -1;
 	}
@@ -1118,6 +1128,14 @@ int crush_remove_straw2_bucket_item(struct crush_map *map,
 	return 0;
 }
 
+
+int crush_remove_consthash_bucket_item(struct crush_map *map,
+				       struct crush_bucket_consthash *bucket, int item)
+{
+	/* TODO: implement consthash remove bucket */
+	return 0;
+}
+
 int crush_bucket_remove_item(struct crush_map *map, struct crush_bucket *b, int item)
 {
 	switch (b->alg) {
@@ -1131,6 +1149,8 @@ int crush_bucket_remove_item(struct crush_map *map, struct crush_bucket *b, int 
 		return crush_remove_straw_bucket_item(map, (struct crush_bucket_straw *)b, item);
 	case CRUSH_BUCKET_STRAW2:
 		return crush_remove_straw2_bucket_item(map, (struct crush_bucket_straw2 *)b, item);
+	case CRUSH_BUCKET_CONSTHASH:
+		return crush_remove_consthash_bucket_item(map, (struct crush_bucket_consthash *)b, item);
 	default:
 		return -1;
 	}

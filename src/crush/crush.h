@@ -178,6 +178,11 @@ enum crush_algorithm {
          * optimal data movement between nested items when modified.
          */
 	CRUSH_BUCKET_STRAW2 = 5,
+
+	/*!
+	 * TODO Write documentation for consthash algorithm
+	 */
+	CRUSH_BUCKET_CONSTHASH = 6,
 };
 extern const char *crush_bucket_alg_name(int alg);
 
@@ -332,6 +337,13 @@ struct crush_bucket_straw2 {
 	__u32 *item_weights;   /*!< 16.16 fixed point weight for each item */
 };
 
+/** @ingroup API
+ * TODO: write documentation for consthash buckets
+ */
+struct crush_bucket_consthash {
+	struct crush_bucket h; /*!< generic bucket information */
+	__u32 *item_weights;   /*!< 16.16 fixed point weight for each item */
+};
 
 
 /** @ingroup API
@@ -509,6 +521,8 @@ static inline const char *crush_alg_name(int alg)
 		return "straw";
 	case CRUSH_BUCKET_STRAW2:
 		return "straw2";
+	case CRUSH_BUCKET_CONSTHASH:
+		return "consthash";
 	default:
 		return "unknown";
 	}
