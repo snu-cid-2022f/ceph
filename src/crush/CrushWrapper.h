@@ -241,6 +241,13 @@ public:
     crush->allowed_bucket_algs = n;
   }
 
+  unsigned get_consthash_weight_scale() const {
+    return crush->consthash_weight_scale;
+  }
+  void set_consthash_weight_scale(unsigned n) {
+    crush->consthash_weight_scale = n;
+  }
+
   bool has_argonaut_tunables() const {
     return
       crush->choose_local_tries == 2 &&

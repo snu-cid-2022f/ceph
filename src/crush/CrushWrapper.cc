@@ -3556,6 +3556,7 @@ void CrushWrapper::dump_tunables(Formatter *f) const
   f->dump_int("chooseleaf_stable", get_chooseleaf_stable());
   f->dump_int("straw_calc_version", get_straw_calc_version());
   f->dump_int("allowed_bucket_algs", get_allowed_bucket_algs());
+  f->dump_int("consthash_weight_scale", get_consthash_weight_scale());
 
   // be helpful about it
   if (has_jewel_tunables())
