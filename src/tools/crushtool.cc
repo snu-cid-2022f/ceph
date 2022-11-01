@@ -257,6 +257,7 @@ struct bucket_types_t {
   { "list", CRUSH_BUCKET_LIST },
   { "straw", CRUSH_BUCKET_STRAW },
   { "straw2", CRUSH_BUCKET_STRAW2 },
+  { "consthash", CRUSH_BUCKET_CONSTHASH },
   { "tree", CRUSH_BUCKET_TREE },
   { 0, 0 },
 };

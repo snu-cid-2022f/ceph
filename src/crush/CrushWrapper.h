@@ -164,6 +164,7 @@ public:
     crush->chooseleaf_descend_once = 1;
     crush->chooseleaf_vary_r = 1;
     crush->chooseleaf_stable = 1;
+    crush->consthash_weight_scale = 500;
     crush->allowed_bucket_algs =
       (1 << CRUSH_BUCKET_UNIFORM) |
       (1 << CRUSH_BUCKET_LIST) |

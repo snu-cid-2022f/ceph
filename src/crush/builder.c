@@ -7,6 +7,7 @@
 
 #include "crush/crush.h"
 #include "builder.h"
+#include "hash.h"
 
 #define dprintk(args...) /* printf(args) */
 
@@ -638,7 +639,90 @@ err:
         return NULL;
 }
 
+/* consthash bucket */
 
+struct crush_consthash_node *
+crush_consthash_tree_insert(struct crush_consthash_node *node,
+			    __u64 hash, int id, __u32 *count)
+{
+	if (!node) {
+		node = malloc(sizeof(struct crush_consthash_node));
+		if (node) {
+			node->hash = hash;
+			node->item_id = id;
+			node->left = node->right = NULL;
+		}
+		++(*count);
+		return node;
+	}
+
+	if (hash < node->hash) {
+		node->left = crush_consthash_tree_insert(node->left, hash, id, count);
+	} else if (hash > node->hash) {
+		node->right = crush_consthash_tree_insert(node->right, hash, id, count);
+	}
+	return node; /* for now, do nothing when it is a duplicate */
+}
+
+struct crush_consthash_node *
+crush_consthash_tree_remove(struct crush_consthash_node *node,
+			    __u64 hash, __u32 *count)
+{
+	if (!node) {
+		return NULL;
+	}
+	if (hash < node->hash) {
+		node->left = crush_consthash_tree_remove(node->left, hash, count);
+	} else if (hash > node->hash) {
+		node->right = crush_consthash_tree_remove(node->right, hash, count);
+	} else {
+		struct crush_consthash_node *tmp;
+		if (!node->left) {
+			tmp = node->right;
+		} else if (!node->right) {
+			tmp = node->left;
+		} else {
+			/* find the smallest node in right subtree */
+			struct crush_consthash_node **parent = &node->right;
+			tmp = node->right;
+			while (tmp->left) {
+				parent = &tmp->left;
+				tmp = tmp->left;
+			}
+			*parent = tmp->right;
+			tmp->left = node->left;
+			tmp->right = node->right;
+		}
+		free(node);
+		--(*count);
+		return tmp;
+	}
+	return node;
+}
+
+void crush_consthash_adjust_item(struct crush_bucket_consthash *bucket,
+				 int item_id, __u32 oldweight, __u32 newweight)
+{
+	__u32 lowerhalf = 0, upperhalf = 0;
+	__u32 i;
+	for (i = 0; i < oldweight || i < newweight; i++) {
+		lowerhalf = crush_hash32_4(bucket->h.hash, lowerhalf, upperhalf, item_id, i);
+		upperhalf = crush_hash32_4(bucket->h.hash, i, upperhalf, lowerhalf, item_id);
+		__u64 hash = ((__u64) upperhalf << 32) | lowerhalf;
+
+		if (i >= oldweight) { /* weight increased, add entries */
+			crush_consthash_tree_insert(bucket->root, hash, item_id, &bucket->tree_size);
+		} else if (i >= newweight) { /* weight decreased, remove entries */
+			crush_consthash_tree_remove(bucket->root, hash, &bucket->tree_size);
+		}
+	}
+}
+
+int crush_consthash_scale_weight(int weight, int consthash_weight_scale)
+{
+	int scaled_weight = (weight / (1 << 8)) * consthash_weight_scale;
+	return scaled_weight / (1 << 8) + 1;
+}
 
 struct crush_bucket_consthash *
 crush_make_consthash_bucket(struct crush_map *map,
@@ -648,7 +732,51 @@ crush_make_consthash_bucket(struct crush_map *map,
 			    int *items,
 			    int *weights)
 {
-	// TODO: implement consthash make bucket
+	struct crush_bucket_consthash *bucket;
+	int i;
+
+	bucket = malloc(sizeof(*bucket));
+	if (!bucket) {
+		return NULL;
+	}
+
+	memset(bucket, 0, sizeof(*bucket));
+	bucket->h.alg = CRUSH_BUCKET_STRAW2;
+	bucket->h.hash = hash;
+	bucket->h.type = type;
+	bucket->h.size = size;
+
+	if (size == 0) {
+		return bucket;
+	}
+
+	bucket->h.items = malloc(sizeof(__s32) * size);
+	if (!bucket->h.items) {
+		goto err;
+	}
+	bucket->item_weights = malloc(sizeof(__u32) * size);
+	if (!bucket->item_weights) {
+		goto err;
+	}
+	bucket->scaled_item_weights = malloc(sizeof(__u32) * size);
+	if (!bucket->scaled_item_weights) {
+		goto err;
+	}
+
+	for (i = 0; i < size; i++) {
+		bucket->h.items[i] = items[i];
+		bucket->h.weight += weights[i];
+		bucket->item_weights[i] = weights[i];
+		bucket->scaled_item_weights[i] = crush_consthash_scale_weight(weights[i], map->consthash_weight_scale);
+		crush_consthash_adjust_item(bucket, items[i], 0, bucket->scaled_item_weights[i]);
+	}
+
+	return bucket;
+err:
+	free(bucket->scaled_item_weights);
+	free(bucket->item_weights);
+	free(bucket->h.items);
+	free(bucket);
 	return NULL;
 }
 
@@ -883,7 +1011,41 @@ int crush_add_consthash_bucket_item(struct crush_map *map,
 				    struct crush_bucket_consthash *bucket,
 				    int item, int weight)
 {
-	/* TODO: implement consthash add bucket */
+	int newsize = bucket->h.size + 1;
+	int newweight;
+
+	void *_realloc = NULL;
+
+	if ((_realloc = realloc(bucket->h.items, sizeof(__s32) * newsize)) == NULL) {
+		return -ENOMEM;
+	} else {
+		bucket->h.items = _realloc;
+	}
+	if ((_realloc = realloc(bucket->item_weights, sizeof(__u32) * newsize)) == NULL) {
+		return -ENOMEM;
+	} else {
+		bucket->item_weights = _realloc;
+	}
+	if ((_realloc = realloc(bucket->scaled_item_weights, sizeof(__u32) * newsize)) == NULL) {
+		return -ENOMEM;
+	} else {
+		bucket->scaled_item_weights = _realloc;
+	}
+
+	bucket->h.items[newsize - 1] = item;
+	bucket->item_weights[newsize - 1] = weight;
+	newweight = crush_consthash_scale_weight(weight, map->consthash_weight_scale);
+	bucket->scaled_item_weights[newsize - 1] = newweight;
+
+	if (crush_addition_is_unsafe(bucket->h.weight, weight)) {
+		return -ERANGE;
+	}
+
+	bucket->h.weight += weight;
+	bucket->h.size++;
+
+	crush_consthash_adjust_item(bucket, item, 0, newweight);
+
 	return 0;
 }
 
@@ -1146,7 +1308,56 @@ int crush_remove_straw2_bucket_item(struct crush_map *map,
 int crush_remove_consthash_bucket_item(struct crush_map *map,
 				       struct crush_bucket_consthash *bucket, int item)
 {
-	/* TODO: implement consthash remove bucket */
+	int newsize = bucket->h.size - 1;
+	int oldweight = 0;
+	unsigned i, j;
+
+	for (i = 0; i < bucket->h.size; i++) {
+		if (bucket->h.items[i] == item) {
+			oldweight = bucket->scaled_item_weights[i];
+			if (bucket->item_weights[i] < bucket->h.weight) {
+				bucket->h.weight -= bucket->item_weights[i];
+			} else {
+				bucket->h.weight = 0;
+			}
+			for (j = i; j < bucket->h.size - 1; j++) {
+				bucket->h.items[j] = bucket->h.items[j + 1];
+				bucket->item_weights[j] = bucket->item_weights[j + 1];
+				bucket->scaled_item_weights[j] = bucket->scaled_item_weights[j + 1];
+			}
+			break;
+		}
+	}
+	if (i == bucket->h.size) {
+		return -ENOENT;
+	}
+
+	crush_consthash_adjust_item(bucket, item, oldweight, 0);
+
+	bucket->h.size--;
+	if (!newsize) {
+		/* don't bother reallocating a 0-length array. */
+		return 0;
+	}
+
+	void *_realloc = NULL;
+
+	if ((_realloc = realloc(bucket->h.items, sizeof(__s32)*newsize)) == NULL) {
+		return -ENOMEM;
+	} else {
+		bucket->h.items = _realloc;
+	}
+	if ((_realloc = realloc(bucket->item_weights, sizeof(__u32)*newsize)) == NULL) {
+		return -ENOMEM;
+	} else {
+		bucket->item_weights = _realloc;
+	}
+	if ((_realloc = realloc(bucket->scaled_item_weights, sizeof(__u32)*newsize)) == NULL) {
+		return -ENOMEM;
+	} else {
+		bucket->scaled_item_weights = _realloc;
+	}
+
 	return 0;
 }
 
@@ -1277,6 +1488,35 @@ int crush_adjust_straw2_bucket_item_weight(struct crush_map *map,
 	return diff;
 }
 
+int crush_adjust_consthash_bucket_item_weight(struct crush_map *map,
+					      struct crush_bucket_consthash *bucket,
+					      int item, int weight)
+{
+	unsigned idx;
+	int diff;
+	int oldweight, newweight;
+
+	for (idx = 0; idx < bucket->h.size; idx++) {
+		if (bucket->h.items[idx] == item) {
+			break;
+		}
+	}
+	if (idx == bucket->h.size) {
+		return 0;
+	}
+
+	oldweight = bucket->scaled_item_weights[idx];
+	newweight = crush_consthash_scale_weight(weight, map->consthash_weight_scale);
+	crush_consthash_adjust_item(bucket, item, oldweight, newweight);
+
+	diff = weight - bucket->item_weights[idx];
+	bucket->item_weights[idx] = weight;
+	bucket->scaled_item_weights[idx] = newweight;
+	bucket->h.weight += diff;
+
+	return diff;
+}
+
 int crush_bucket_adjust_item_weight(struct crush_map *map,
 				    struct crush_bucket *b,
 				    int item, int weight)
@@ -1299,6 +1539,10 @@ int crush_bucket_adjust_item_weight(struct crush_map *map,
 		return crush_adjust_straw2_bucket_item_weight(map,
 							      (struct crush_bucket_straw2 *)b,
 							     item, weight);
+	case CRUSH_BUCKET_CONSTHASH:
+		return crush_adjust_consthash_bucket_item_weight(map,
+								 (struct crush_bucket_consthash *)b,
+								 item, weight);
 	default:
 		return -1;
 	}

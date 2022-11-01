@@ -82,9 +82,23 @@ void crush_destroy_bucket_straw2(struct crush_bucket_straw2 *b)
 	kfree(b);
 }
 
+static void crush_consthash_destroy_node(struct crush_consthash_node *n) {
+	if (!n) {
+		return;
+	}
+	crush_consthash_destroy_node(n->left);
+	crush_consthash_destroy_node(n->right);
+	kfree(n);
+}
+
 void crush_destroy_bucket_consthash(struct crush_bucket_consthash *b)
 {
-	/* TODO: implement destructor */
+	kfree(b->item_weights);
+	kfree(b->scaled_item_weights);
+	kfree(b->h.items);
+
+	crush_consthash_destroy_node(b->root);
+	kfree(b);
 }
 
 void crush_destroy_bucket(struct crush_bucket *b)
