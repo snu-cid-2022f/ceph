@@ -361,6 +361,11 @@ static int bucket_straw2_choose(const struct crush_bucket_straw2 *bucket,
 	return bucket->h.items[high];
 }
 
+static int bucket_uniform2_choose(const struct crush_bucket_uniform2 *bucket,
+				   int x, int r)
+{
+	/* TODO implement consthash choosing */
+}
 
 static int crush_bucket_choose(const struct crush_bucket *in,
 			       struct crush_work_bucket *work,
@@ -389,6 +394,10 @@ static int crush_bucket_choose(const struct crush_bucket *in,
 		return bucket_straw2_choose(
 			(const struct crush_bucket_straw2 *)in,
 			x, r, arg, position);
+    case CRUSH_BUCKET_UNIFORM2:
+		return bucket_uniform2_choose(
+			(const struct crush_bucket_uniform2 *)in,
+			x, r);
 	default:
 		dprintk("unknown bucket %d alg %d\n", in->id, in->alg);
 		return in->items[0];

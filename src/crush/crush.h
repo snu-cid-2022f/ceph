@@ -178,6 +178,11 @@ enum crush_algorithm {
          * optimal data movement between nested items when modified.
          */
 	CRUSH_BUCKET_STRAW2 = 5,
+
+    /*!
+	 * TODO Write documentation for uniform2 algorithm
+	 */
+	CRUSH_BUCKET_UNIFORM2 = 7,
 };
 extern const char *crush_bucket_alg_name(int alg);
 
@@ -332,7 +337,13 @@ struct crush_bucket_straw2 {
 	__u32 *item_weights;   /*!< 16.16 fixed point weight for each item */
 };
 
-
+/** @ingroup API
+ * TODO: write documentation for uniform2 buckets
+ */
+struct crush_bucket_uniform2 {
+	struct crush_bucket h; /*!< generic bucket information */
+	__u32 *item_weights;   /*!< 16.16 fixed point weight for each item */
+};
 
 /** @ingroup API
  *
@@ -509,6 +520,8 @@ static inline const char *crush_alg_name(int alg)
 		return "straw";
 	case CRUSH_BUCKET_STRAW2:
 		return "straw2";
+    case CRUSH_BUCKET_UNIFORM2:
+        return "uniform2";
 	default:
 		return "unknown";
 	}

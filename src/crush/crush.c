@@ -14,6 +14,7 @@ const char *crush_bucket_alg_name(int alg)
 	case CRUSH_BUCKET_TREE: return "tree";
 	case CRUSH_BUCKET_STRAW: return "straw";
 	case CRUSH_BUCKET_STRAW2: return "straw2";
+    case CRUSH_BUCKET_UNIFORM2: return "uniform2";
 	default: return "unknown";
 	}
 }
@@ -39,6 +40,8 @@ int crush_get_bucket_item_weight(const struct crush_bucket *b, int p)
 		return ((struct crush_bucket_straw *)b)->item_weights[p];
 	case CRUSH_BUCKET_STRAW2:
 		return ((struct crush_bucket_straw2 *)b)->item_weights[p];
+    case CRUSH_BUCKET_UNIFORM2:
+		return ((struct crush_bucket_uniform2 *)b)->item_weights[p];
 	}
 	return 0;
 }
@@ -79,6 +82,11 @@ void crush_destroy_bucket_straw2(struct crush_bucket_straw2 *b)
 	kfree(b);
 }
 
+void crush_destroy_bucket_uniform2(struct crush_bucket_uniform2 *b)
+{
+	/* TODO: implement destructor */
+}
+
 void crush_destroy_bucket(struct crush_bucket *b)
 {
 	switch (b->alg) {
@@ -96,6 +104,9 @@ void crush_destroy_bucket(struct crush_bucket *b)
 		break;
 	case CRUSH_BUCKET_STRAW2:
 		crush_destroy_bucket_straw2((struct crush_bucket_straw2 *)b);
+		break;
+    case CRUSH_BUCKET_UNIFORM2:
+		crush_destroy_bucket_uniform2((struct crush_bucket_uniform2 *)b);
 		break;
 	}
 }
