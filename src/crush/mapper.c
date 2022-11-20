@@ -115,6 +115,31 @@ static int bucket_uniform_choose(const struct crush_bucket_uniform *bucket,
 	return bucket_perm_choose(&bucket->h, work, x, r);
 }
 
+static int bucket_uniform2_choose(const struct crush_bucket_uniform2 *bucket,
+                                  int x, int r)
+{
+    __u32 i, res;
+    __u32 p;
+    __u64 h = (__u64)crush_hash32_3(bucket->h.hash, x, bucket->h.id, r);
+    __u64 rem = (U32_MAX - bucket->h.size + 1) % bucket->h.size;
+    __u64 l = U32_MAX / bucket->h.size + 1;
+
+    if (h < rem * l) {
+        res = h / l;
+    } else {
+        p = h - rem * l;
+        res = p / (l - 1) + rem;
+    }
+
+    if (res % 2 == 0) {
+        i = res / 2;
+    } else {
+        i = bucket->h.size - (res + 1) / 2;
+    }
+
+    return bucket->h.items[i];
+}
+
 /* list */
 static int bucket_list_choose(const struct crush_bucket_list *bucket,
 			      int x, int r)
@@ -361,7 +386,6 @@ static int bucket_straw2_choose(const struct crush_bucket_straw2 *bucket,
 	return bucket->h.items[high];
 }
 
-
 static int crush_bucket_choose(const struct crush_bucket *in,
 			       struct crush_work_bucket *work,
 			       int x, int r,
@@ -375,6 +399,10 @@ static int crush_bucket_choose(const struct crush_bucket *in,
 		return bucket_uniform_choose(
 			(const struct crush_bucket_uniform *)in,
 			work, x, r);
+    case CRUSH_BUCKET_UNIFORM2:
+		return bucket_uniform2_choose(
+			(const struct crush_bucket_uniform2 *)in,
+			x, r);
 	case CRUSH_BUCKET_LIST:
 		return bucket_list_choose((const struct crush_bucket_list *)in,
 					  x, r);
