@@ -741,7 +741,7 @@ crush_make_consthash_bucket(struct crush_map *map,
 	}
 
 	memset(bucket, 0, sizeof(*bucket));
-	bucket->h.alg = CRUSH_BUCKET_STRAW2;
+	bucket->h.alg = CRUSH_BUCKET_CONSTHASH;
 	bucket->h.hash = hash;
 	bucket->h.type = type;
 	bucket->h.size = size;
