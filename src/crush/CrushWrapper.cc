@@ -3382,6 +3382,7 @@ void CrushWrapper::decode_crush_bucket(crush_bucket** bptr, bufferlist::const_it
     std::vector<crush_consthash_node *> stack;
     for (unsigned j = 0; j < cbc->tree_size; ++j) {
       crush_consthash_node *curr = (crush_consthash_node *) malloc(sizeof(crush_consthash_node));
+      curr->left = curr->right = NULL;
       __u32 upper, lower;
       decode(upper, blp);
       decode(lower, blp);
