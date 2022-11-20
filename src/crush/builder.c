@@ -711,9 +711,9 @@ void crush_consthash_adjust_item(struct crush_bucket_consthash *bucket,
 		__u64 hash = ((__u64) upperhalf << 32) | lowerhalf;
 
 		if (i >= oldweight) { /* weight increased, add entries */
-			crush_consthash_tree_insert(bucket->root, hash, item_id, &bucket->tree_size);
+			bucket->root = crush_consthash_tree_insert(bucket->root, hash, item_id, &bucket->tree_size);
 		} else if (i >= newweight) { /* weight decreased, remove entries */
-			crush_consthash_tree_remove(bucket->root, hash, &bucket->tree_size);
+			bucket->root = crush_consthash_tree_remove(bucket->root, hash, &bucket->tree_size);
 		}
 	}
 }
