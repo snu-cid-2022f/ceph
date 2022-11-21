@@ -1,3 +1,4 @@
+mkdir -p maps csvs
 
 # crushtool binary 위치
 crushtool_dir=../build/bin/crushtool
