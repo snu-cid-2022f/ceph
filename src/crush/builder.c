@@ -1804,5 +1804,6 @@ void set_optimal_crush_map(struct crush_map *map) {
     (1 << CRUSH_BUCKET_UNIFORM) |
     (1 << CRUSH_BUCKET_LIST) |
     (1 << CRUSH_BUCKET_STRAW) |
-    (1 << CRUSH_BUCKET_STRAW2));
+    (1 << CRUSH_BUCKET_STRAW2) |
+    (1 << CRUSH_BUCKET_CONSTHASH));
 }
