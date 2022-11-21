@@ -6,3 +6,7 @@ mypy_report.txt
 .mypy_venv/
 .mypy_cache/
 .tox/
+
+
+new_bucket_testing/maps/*
+new_bucket_testing/csvs/*
