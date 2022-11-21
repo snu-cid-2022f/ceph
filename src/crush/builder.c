@@ -1670,6 +1670,30 @@ static int crush_reweight_straw2_bucket(struct crush_map *map, struct crush_buck
 	return 0;
 }
 
+static int crush_reweight_consthash_bucket(struct crush_map *map, struct crush_bucket_consthash *bucket)
+{
+
+	unsigned i;
+
+	bucket->h.weight = 0;
+	for (i = 0; i < bucket->h.size; i++) {
+		int id = bucket->h.items[i];
+		if (id < 0) {
+			struct crush_bucket *c = map->buckets[-1-id];
+			crush_reweight_bucket(map, c);
+			bucket->item_weights[i] = c->weight;
+			bucket->scaled_item_weights[i] = crush_consthash_scale_weight(c->weight, map->consthash_weight_scale);
+		}
+
+		if (crush_addition_is_unsafe(bucket->h.weight, bucket->item_weights[i]))
+			return -ERANGE;
+
+		bucket->h.weight += bucket->item_weights[i];
+	}
+
+	return 0;
+}
+
 int crush_reweight_bucket(struct crush_map *map, struct crush_bucket *b)
 {
 	switch (b->alg) {
@@ -1683,6 +1707,8 @@ int crush_reweight_bucket(struct crush_map *map, struct crush_bucket *b)
 		return crush_reweight_straw_bucket(map, (struct crush_bucket_straw *)b);
 	case CRUSH_BUCKET_STRAW2:
 		return crush_reweight_straw2_bucket(map, (struct crush_bucket_straw2 *)b);
+	case CRUSH_BUCKET_CONSTHASH:
+		return crush_reweight_consthash_bucket(map, (struct crush_bucket_consthash *)b);
 	default:
 		return -1;
 	}
