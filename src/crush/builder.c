@@ -1672,7 +1672,6 @@ static int crush_reweight_straw2_bucket(struct crush_map *map, struct crush_buck
 
 static int crush_reweight_consthash_bucket(struct crush_map *map, struct crush_bucket_consthash *bucket)
 {
-
 	unsigned i;
 
 	bucket->h.weight = 0;
