@@ -29,29 +29,41 @@ build_crushmap_failure_domain_datacenter() { # $1 map_name, $2 num_osds, $3 buck
   local map_name=${1}
   local num_osds=${2}
   local bucket_type=${3}
-  ${crushtool_dir} -o ./maps/${map_name} --build --num_osds ${num_osds} node ${bucket_type} 10 rack ${bucket_type} 10 datacenter ${bucket_type} 5 root ${bucket_type} 0
+  ${crushtool_dir} -o ./maps/${map_name} --build --num_osds ${num_osds} node ${bucket_type} 10 rack ${bucket_type} 10 datacenter ${bucket_type} 50 root ${bucket_type} 0
 }
 
 
 # failure domain osd
+echo "building crush map... failure domain osd. "
 build_crushmap_failure_domain_osd 10consthash 10 consthash # 10consthash
 build_crushmap_failure_domain_osd 10straw2 10 straw2 # 10straw2
+echo "done."
 
 # failure domain node
+echo "building crush map... failure domain node. "
 build_crushmap_failure_domain_node 30consthash 30 consthash 
 build_crushmap_failure_domain_node 30straw2e 30 straw2
 build_crushmap_failure_domain_node 100consthash 100 consthash 
 build_crushmap_failure_domain_node 100straw2 100 straw2 
+echo "done."
 
 # failure domain rack
+echo "building crush map... failure domain rack. "
+echo "  building 1000"
 build_crushmap_failure_domain_rack 1000consthash 1000 consthash
 build_crushmap_failure_domain_rack 1000consthash 1000 consthash
+echo "  building 5000 "
 build_crushmap_failure_domain_rack 5000consthash 5000 consthash
 build_crushmap_failure_domain_rack 5000consthash 5000 consthash
+echo "done."
 
 # failure domain datacenter
+echo "building crush map... failure domain datacenter. "
+echo "  building 25000 consthash "
 build_crushmap_failure_domain_datacenter 25000consthash 25000 consthash
+echo "  building 25000 straw2 "
 build_crushmap_failure_domain_datacenter 25000straw2 25000 straw2
+echo "done."
 
 
 
@@ -99,5 +111,6 @@ decompile_and_print_crushmap() { # $1 map_name
 }
 
 # 잘 만들어졌는지 확인용도
-decompile_and_print_crushmap 1000consthash > ./decompiled_maps/collection.txt
-
+echo "decompling maps.."
+decompile_and_print_crushmap 25000consthash > ./decompiled_maps/collection.txt
+echo "done."
