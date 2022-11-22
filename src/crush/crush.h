@@ -109,6 +109,7 @@ struct crush_rule {
  * 	uniform         O(1)       poor         poor
  * 	list            O(n)       optimal      poor
  * 	straw2          O(n)       optimal      optimal
+ * 	uniform2        O(1)       good         poor
  */
 enum crush_algorithm {
        /*!
@@ -342,7 +343,7 @@ struct crush_bucket_straw2 {
  */
 struct crush_bucket_uniform2 {
 	struct crush_bucket h; /*!< generic bucket information */
-	__u32 *item_weights;   /*!< 16.16 fixed point weight for each item */
+    __u32 item_weight;  /*!< 16.16 fixed point weight for each item */
 };
 
 /** @ingroup API
@@ -480,6 +481,7 @@ extern void crush_destroy_bucket_list(struct crush_bucket_list *b);
 extern void crush_destroy_bucket_tree(struct crush_bucket_tree *b);
 extern void crush_destroy_bucket_straw(struct crush_bucket_straw *b);
 extern void crush_destroy_bucket_straw2(struct crush_bucket_straw2 *b);
+extern void crush_destroy_bucket_uniform2(struct crush_bucket_uniform2 *b);
 /** @ingroup API
  *
  * Deallocate a bucket created via crush_add_bucket().

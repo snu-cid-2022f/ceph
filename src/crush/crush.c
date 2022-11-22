@@ -41,7 +41,7 @@ int crush_get_bucket_item_weight(const struct crush_bucket *b, int p)
 	case CRUSH_BUCKET_STRAW2:
 		return ((struct crush_bucket_straw2 *)b)->item_weights[p];
     case CRUSH_BUCKET_UNIFORM2:
-		return ((struct crush_bucket_uniform2 *)b)->item_weights[p];
+		return ((struct crush_bucket_uniform2 *)b)->item_weight;
 	}
 	return 0;
 }
@@ -84,7 +84,8 @@ void crush_destroy_bucket_straw2(struct crush_bucket_straw2 *b)
 
 void crush_destroy_bucket_uniform2(struct crush_bucket_uniform2 *b)
 {
-	/* TODO: implement destructor */
+    kfree(b->h.items);
+    kfree(b);
 }
 
 void crush_destroy_bucket(struct crush_bucket *b)

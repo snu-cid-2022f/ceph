@@ -257,6 +257,7 @@ struct bucket_types_t {
   { "list", CRUSH_BUCKET_LIST },
   { "straw", CRUSH_BUCKET_STRAW },
   { "straw2", CRUSH_BUCKET_STRAW2 },
+  { "uniform2", CRUSH_BUCKET_UNIFORM2 },
   { "tree", CRUSH_BUCKET_TREE },
   { 0, 0 },
 };

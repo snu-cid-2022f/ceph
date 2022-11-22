@@ -2984,6 +2984,10 @@ void CrushWrapper::encode(bufferlist& bl, uint64_t features) const
       }
       break;
 
+    case CRUSH_BUCKET_UNIFORM2:
+      encode((reinterpret_cast<crush_bucket_uniform2*>(crush->buckets[i]))->item_weight, bl);
+      break;
+
     default:
       ceph_abort();
       break;
@@ -3268,6 +3272,9 @@ void CrushWrapper::decode_crush_bucket(crush_bucket** bptr, bufferlist::const_it
   case CRUSH_BUCKET_STRAW2:
     size = sizeof(crush_bucket_straw2);
     break;
+  case CRUSH_BUCKET_UNIFORM2:
+    size = sizeof(crush_bucket_uniform2);
+    break;
   default:
     {
       char str[128];
@@ -3336,6 +3343,10 @@ void CrushWrapper::decode_crush_bucket(crush_bucket** bptr, bufferlist::const_it
     }
     break;
   }
+
+  case CRUSH_BUCKET_UNIFORM2:
+    decode((reinterpret_cast<crush_bucket_uniform2*>(bucket))->item_weight, blp);
+    break;
 
   default:
     // We should have handled this case in the first switch statement

@@ -115,6 +115,22 @@ static int bucket_uniform_choose(const struct crush_bucket_uniform *bucket,
 	return bucket_perm_choose(&bucket->h, work, x, r);
 }
 
+static int bucket_uniform2_choose(const struct crush_bucket_uniform2 *bucket,
+                                  int x, int r)
+{
+    __u32 i;
+    __u32 h = crush_hash32_3(bucket->h.hash, x, bucket->h.id, r);
+    h = (__u32) ((double) h / (U32_MAX / (double) bucket->h.size));
+
+    if (h % 2 == 0) {
+        i = h / 2;
+    } else {
+        i = bucket->h.size - (h + 1) / 2;
+    }
+
+    return bucket->h.items[i];
+}
+
 /* list */
 static int bucket_list_choose(const struct crush_bucket_list *bucket,
 			      int x, int r)
@@ -359,12 +375,6 @@ static int bucket_straw2_choose(const struct crush_bucket_straw2 *bucket,
 	}
 
 	return bucket->h.items[high];
-}
-
-static int bucket_uniform2_choose(const struct crush_bucket_uniform2 *bucket,
-				   int x, int r)
-{
-	/* TODO implement consthash choosing */
 }
 
 static int crush_bucket_choose(const struct crush_bucket *in,

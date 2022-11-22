@@ -645,9 +645,8 @@ crush_make_uniform2_bucket(int hash, int type, int size,
                           int *items,
                           int item_weight)
 {
-    // TODO: modify uniform function to uniform2
     int i;
-    struct crush_bucket_uniform *bucket;
+    struct crush_bucket_uniform2 *bucket;
 
     bucket = malloc(sizeof(*bucket));
     if (!bucket)
@@ -913,12 +912,35 @@ int crush_add_straw2_bucket_item(struct crush_map *map,
 	return 0;
 }
 
-int crush_add_uniform2_bucket_item(struct crush_map *map,
-				    struct crush_bucket_uniform2 *bucket,
-				    int item, int weight)
+int crush_add_uniform2_bucket_item(struct crush_bucket_uniform2 *bucket, int item, int weight)
 {
-    /* TODO: implement consthash add bucket */
-	return 0;
+    int newsize = bucket->h.size + 1;
+    void *_realloc = NULL;
+
+    /* In such situation 'CRUSH_BUCKET_UNIFORM', the weight
+       provided for the item should be the same as
+       bucket->item_weight defined with 'crush_make_bucket'. This
+       assumption is enforced by the return value which is always
+       0. */
+    if (bucket->item_weight != weight) {
+        return -EINVAL;
+    }
+
+    if ((_realloc = realloc(bucket->h.items, sizeof(__s32)*newsize)) == NULL) {
+        return -ENOMEM;
+    } else {
+        bucket->h.items = _realloc;
+    }
+
+    bucket->h.items[newsize-1] = item;
+
+    if (crush_addition_is_unsafe(bucket->h.weight, weight))
+        return -ERANGE;
+
+    bucket->h.weight += weight;
+    bucket->h.size++;
+
+    return 0;
 }
 
 int crush_bucket_add_item(struct crush_map *map,
@@ -935,8 +957,8 @@ int crush_bucket_add_item(struct crush_map *map,
 		return crush_add_straw_bucket_item(map, (struct crush_bucket_straw *)b, item, weight);
 	case CRUSH_BUCKET_STRAW2:
 		return crush_add_straw2_bucket_item(map, (struct crush_bucket_straw2 *)b, item, weight);
-        case CRUSH_BUCKET_UNIFORM2:
-            return crush_add_uniform2_bucket_item(map, (struct crush_bucket_uniform2 *)b, item, weight);
+    case CRUSH_BUCKET_UNIFORM2:
+        return crush_add_uniform2_bucket_item((struct crush_bucket_uniform2 *)b, item, weight);
 	default:
 		return -1;
 	}
@@ -1176,10 +1198,31 @@ int crush_remove_straw2_bucket_item(struct crush_map *map,
 	return 0;
 }
 
-int crush_remove_uniform2_bucket_item(struct crush_map *map,
-				       struct crush_bucket_uniform2 *bucket, int item)
+int crush_remove_uniform2_bucket_item(struct crush_bucket_uniform2 *bucket, int item)
 {
-	/* TODO: implement uniform2 remove bucket */
+    unsigned i, j;
+    int newsize;
+    void *_realloc = NULL;
+
+    for (i = 0; i < bucket->h.size; i++)
+        if (bucket->h.items[i] == item)
+            break;
+    if (i == bucket->h.size)
+        return -ENOENT;
+
+    for (j = i; j < bucket->h.size; j++)
+        bucket->h.items[j] = bucket->h.items[j+1];
+    newsize = --bucket->h.size;
+    if (bucket->item_weight < bucket->h.weight)
+        bucket->h.weight -= bucket->item_weight;
+    else
+        bucket->h.weight = 0;
+
+    if ((_realloc = realloc(bucket->h.items, sizeof(__s32)*newsize)) == NULL) {
+        return -ENOMEM;
+    } else {
+        bucket->h.items = _realloc;
+    }
 	return 0;
 }
 
@@ -1197,7 +1240,7 @@ int crush_bucket_remove_item(struct crush_map *map, struct crush_bucket *b, int 
 	case CRUSH_BUCKET_STRAW2:
 		return crush_remove_straw2_bucket_item(map, (struct crush_bucket_straw2 *)b, item);
     case CRUSH_BUCKET_UNIFORM2:
-        return crush_remove_uniform2_bucket_item(map, (struct crush_bucket_uniform2 *)b, item);
+        return crush_remove_uniform2_bucket_item((struct crush_bucket_uniform2 *)b, item);
 	default:
 		return -1;
 	}
@@ -1310,6 +1353,16 @@ int crush_adjust_straw2_bucket_item_weight(struct crush_map *map,
 	return diff;
 }
 
+int crush_adjust_uniform2_bucket_item_weight(struct crush_bucket_uniform2 *bucket, int item, int weight)
+{
+    int diff = (weight - bucket->item_weight) * bucket->h.size;
+
+    bucket->item_weight = weight;
+    bucket->h.weight = bucket->item_weight * bucket->h.size;
+
+    return diff;
+}
+
 int crush_bucket_adjust_item_weight(struct crush_map *map,
 				    struct crush_bucket *b,
 				    int item, int weight)
@@ -1332,6 +1385,10 @@ int crush_bucket_adjust_item_weight(struct crush_map *map,
 		return crush_adjust_straw2_bucket_item_weight(map,
 							      (struct crush_bucket_straw2 *)b,
 							     item, weight);
+    case CRUSH_BUCKET_UNIFORM2:
+        return crush_adjust_uniform2_bucket_item_weight((struct crush_bucket_uniform2 *)b,
+                                 item, weight);
+
 	default:
 		return -1;
 	}
@@ -1459,6 +1516,34 @@ static int crush_reweight_straw2_bucket(struct crush_map *map, struct crush_buck
 	return 0;
 }
 
+static int crush_reweight_uniform2_bucket(struct crush_map *map, struct crush_bucket_uniform2 *bucket)
+{
+    unsigned i;
+    unsigned sum = 0, n = 0, leaves = 0;
+
+    for (i = 0; i < bucket->h.size; i++) {
+        int id = bucket->h.items[i];
+        if (id < 0) {
+            struct crush_bucket *c = map->buckets[-1-id];
+            crush_reweight_bucket(map, c);
+
+            if (crush_addition_is_unsafe(sum, c->weight))
+                return -ERANGE;
+
+            sum += c->weight;
+            n++;
+        } else {
+            leaves++;
+        }
+    }
+
+    if (n > leaves)
+        bucket->item_weight = sum / n;  // more bucket children than leaves, average!
+    bucket->h.weight = bucket->item_weight * bucket->h.size;
+
+    return 0;
+}
+
 int crush_reweight_bucket(struct crush_map *map, struct crush_bucket *b)
 {
 	switch (b->alg) {
@@ -1472,6 +1557,8 @@ int crush_reweight_bucket(struct crush_map *map, struct crush_bucket *b)
 		return crush_reweight_straw_bucket(map, (struct crush_bucket_straw *)b);
 	case CRUSH_BUCKET_STRAW2:
 		return crush_reweight_straw2_bucket(map, (struct crush_bucket_straw2 *)b);
+    case CRUSH_BUCKET_UNIFORM2:
+        return crush_reweight_uniform2_bucket(map, (struct crush_bucket_uniform2 *)b);
 	default:
 		return -1;
 	}
