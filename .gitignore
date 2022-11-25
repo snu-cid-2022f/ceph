@@ -83,3 +83,6 @@ GTAGS
 # Python building things where it shouldn't
 /src/python-common/build/
 .cache
+
+# testing
+new_bucket_testing/**/*
