@@ -111,7 +111,8 @@ function test_crushmap() { ## $1 num-rep $2 min-x $3 max-x
 
 ################ 여기서부터 명령어 실행
 
-osd_array=("10;consthash" "10;straw2" "20;consthash" "20;straw2")
+# osd_array=("10;consthash" "10;straw2" "20;consthash" "20;straw2")
+osd_array=("10;uniform2" "10;straw2" "20;uniform2" "20;straw2")
 node_array=("30;consthash" "30;straw2" "100;consthash" "100;straw2")
 rack_array=("1000;consthash" "1000;straw2" "5000;consthash" "5000;straw2")
 datacenter_array=("1000;consthash" "1000;straw2" "5000;consthash" "5000;straw2")
@@ -119,14 +120,14 @@ datacenter_array=("1000;consthash" "1000;straw2" "5000;consthash" "5000;straw2")
 
 
 build_crushmap "osd" "${osd_array[@]}"
-build_crushmap "node" "${node_array[@]}"
+# build_crushmap "node" "${node_array[@]}"
 decompile_crushmap "osd" "${osd_array[@]}"
-decompile_crushmap "node" "${node_array[@]}"
+# decompile_crushmap "node" "${node_array[@]}"
 
 # edit_crushmap
 # compile_crushmap
 
 test_crushmap "osd" "2" "0" "1024" "${osd_array[@]}"
-test_crushmap "node" "2" "0" "1024" "${node_array[@]}"
+# test_crushmap "node" "2" "0" "1024" "${node_array[@]}"
 
 
