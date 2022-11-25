@@ -399,6 +399,10 @@ static int crush_bucket_choose(const struct crush_bucket *in,
 		return bucket_uniform_choose(
 			(const struct crush_bucket_uniform *)in,
 			work, x, r);
+    case CRUSH_BUCKET_UNIFORM2:
+		return bucket_uniform2_choose(
+			(const struct crush_bucket_uniform2 *)in,
+			x, r);
 	case CRUSH_BUCKET_LIST:
 		return bucket_list_choose((const struct crush_bucket_list *)in,
 					  x, r);
@@ -413,10 +417,6 @@ static int crush_bucket_choose(const struct crush_bucket *in,
 		return bucket_straw2_choose(
 			(const struct crush_bucket_straw2 *)in,
 			x, r, arg, position);
-    case CRUSH_BUCKET_UNIFORM2:
-		return bucket_uniform2_choose(
-			(const struct crush_bucket_uniform2 *)in,
-			x, r);
 	default:
 		dprintk("unknown bucket %d alg %d\n", in->id, in->alg);
 		return in->items[0];

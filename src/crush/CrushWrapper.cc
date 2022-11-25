@@ -2949,6 +2949,10 @@ void CrushWrapper::encode(bufferlist& bl, uint64_t features) const
       encode((reinterpret_cast<crush_bucket_uniform*>(crush->buckets[i]))->item_weight, bl);
       break;
 
+    case CRUSH_BUCKET_UNIFORM2:
+      encode((reinterpret_cast<crush_bucket_uniform2*>(crush->buckets[i]))->item_weight, bl);
+      break;
+
     case CRUSH_BUCKET_LIST:
       for (unsigned j=0; j<crush->buckets[i]->size; j++) {
 	encode((reinterpret_cast<crush_bucket_list*>(crush->buckets[i]))->item_weights[j], bl);
@@ -2982,10 +2986,6 @@ void CrushWrapper::encode(bufferlist& bl, uint64_t features) const
 	  encode(weights[j], bl);
 	}
       }
-      break;
-
-    case CRUSH_BUCKET_UNIFORM2:
-      encode((reinterpret_cast<crush_bucket_uniform2*>(crush->buckets[i]))->item_weight, bl);
       break;
 
     default:
@@ -3260,6 +3260,9 @@ void CrushWrapper::decode_crush_bucket(crush_bucket** bptr, bufferlist::const_it
   case CRUSH_BUCKET_UNIFORM:
     size = sizeof(crush_bucket_uniform);
     break;
+  case CRUSH_BUCKET_UNIFORM2:
+    size = sizeof(crush_bucket_uniform2);
+    break;
   case CRUSH_BUCKET_LIST:
     size = sizeof(crush_bucket_list);
     break;
@@ -3271,9 +3274,6 @@ void CrushWrapper::decode_crush_bucket(crush_bucket** bptr, bufferlist::const_it
     break;
   case CRUSH_BUCKET_STRAW2:
     size = sizeof(crush_bucket_straw2);
-    break;
-  case CRUSH_BUCKET_UNIFORM2:
-    size = sizeof(crush_bucket_uniform2);
     break;
   default:
     {
@@ -3300,6 +3300,10 @@ void CrushWrapper::decode_crush_bucket(crush_bucket** bptr, bufferlist::const_it
   switch (bucket->alg) {
   case CRUSH_BUCKET_UNIFORM:
     decode((reinterpret_cast<crush_bucket_uniform*>(bucket))->item_weight, blp);
+    break;
+
+  case CRUSH_BUCKET_UNIFORM2:
+    decode((reinterpret_cast<crush_bucket_uniform2*>(bucket))->item_weight, blp);
     break;
 
   case CRUSH_BUCKET_LIST: {
@@ -3343,10 +3347,6 @@ void CrushWrapper::decode_crush_bucket(crush_bucket** bptr, bufferlist::const_it
     }
     break;
   }
-
-  case CRUSH_BUCKET_UNIFORM2:
-    decode((reinterpret_cast<crush_bucket_uniform2*>(bucket))->item_weight, blp);
-    break;
 
   default:
     // We should have handled this case in the first switch statement

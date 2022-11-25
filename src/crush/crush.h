@@ -299,6 +299,14 @@ struct crush_bucket_uniform {
 };
 
 /** @ingroup API
+ * TODO: write documentation for uniform2 buckets
+ */
+struct crush_bucket_uniform2 {
+    struct crush_bucket h; /*!< generic bucket information */
+    __u32 item_weight;  /*!< 16.16 fixed point weight for each item */
+};
+
+/** @ingroup API
  * The weight of each item in the bucket when
  * __h.alg__ == ::CRUSH_BUCKET_LIST.
  *
@@ -336,14 +344,6 @@ struct crush_bucket_straw {
 struct crush_bucket_straw2 {
         struct crush_bucket h; /*!< generic bucket information */
 	__u32 *item_weights;   /*!< 16.16 fixed point weight for each item */
-};
-
-/** @ingroup API
- * TODO: write documentation for uniform2 buckets
- */
-struct crush_bucket_uniform2 {
-	struct crush_bucket h; /*!< generic bucket information */
-    __u32 item_weight;  /*!< 16.16 fixed point weight for each item */
 };
 
 /** @ingroup API
@@ -477,11 +477,11 @@ struct crush_map {
  */
 extern int crush_get_bucket_item_weight(const struct crush_bucket *b, int pos);
 extern void crush_destroy_bucket_uniform(struct crush_bucket_uniform *b);
+extern void crush_destroy_bucket_uniform2(struct crush_bucket_uniform2 *b);
 extern void crush_destroy_bucket_list(struct crush_bucket_list *b);
 extern void crush_destroy_bucket_tree(struct crush_bucket_tree *b);
 extern void crush_destroy_bucket_straw(struct crush_bucket_straw *b);
 extern void crush_destroy_bucket_straw2(struct crush_bucket_straw2 *b);
-extern void crush_destroy_bucket_uniform2(struct crush_bucket_uniform2 *b);
 /** @ingroup API
  *
  * Deallocate a bucket created via crush_add_bucket().
@@ -514,6 +514,8 @@ static inline const char *crush_alg_name(int alg)
 	switch (alg) {
 	case CRUSH_BUCKET_UNIFORM:
 		return "uniform";
+    case CRUSH_BUCKET_UNIFORM2:
+        return "uniform2";
 	case CRUSH_BUCKET_LIST:
 		return "list";
 	case CRUSH_BUCKET_TREE:
@@ -522,8 +524,6 @@ static inline const char *crush_alg_name(int alg)
 		return "straw";
 	case CRUSH_BUCKET_STRAW2:
 		return "straw2";
-    case CRUSH_BUCKET_UNIFORM2:
-        return "uniform2";
 	default:
 		return "unknown";
 	}

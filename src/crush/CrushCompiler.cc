@@ -611,6 +611,8 @@ int CrushCompiler::parse_bucket(iter_t const& i)
       string a = string_node(sub->children[1]);
       if (a == "uniform")
 	alg = CRUSH_BUCKET_UNIFORM;
+      else if (a == "uniform2")
+    alg = CRUSH_BUCKET_UNIFORM2;
       else if (a == "list")
 	alg = CRUSH_BUCKET_LIST;
       else if (a == "tree")
@@ -619,8 +621,6 @@ int CrushCompiler::parse_bucket(iter_t const& i)
 	alg = CRUSH_BUCKET_STRAW;
       else if (a == "straw2")
 	alg = CRUSH_BUCKET_STRAW2;
-      else if (a == "uniform2")
-    alg = CRUSH_BUCKET_UNIFORM2;
       else {
 	err << "unknown bucket alg '" << a << "'" << std::endl << std::endl;
 	return -EINVAL;

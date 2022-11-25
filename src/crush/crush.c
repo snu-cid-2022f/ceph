@@ -32,6 +32,8 @@ int crush_get_bucket_item_weight(const struct crush_bucket *b, int p)
 	switch (b->alg) {
 	case CRUSH_BUCKET_UNIFORM:
 		return ((struct crush_bucket_uniform *)b)->item_weight;
+    case CRUSH_BUCKET_UNIFORM2:
+        return ((struct crush_bucket_uniform2 *)b)->item_weight;
 	case CRUSH_BUCKET_LIST:
 		return ((struct crush_bucket_list *)b)->item_weights[p];
 	case CRUSH_BUCKET_TREE:
@@ -40,8 +42,6 @@ int crush_get_bucket_item_weight(const struct crush_bucket *b, int p)
 		return ((struct crush_bucket_straw *)b)->item_weights[p];
 	case CRUSH_BUCKET_STRAW2:
 		return ((struct crush_bucket_straw2 *)b)->item_weights[p];
-    case CRUSH_BUCKET_UNIFORM2:
-		return ((struct crush_bucket_uniform2 *)b)->item_weight;
 	}
 	return 0;
 }
@@ -50,6 +50,12 @@ void crush_destroy_bucket_uniform(struct crush_bucket_uniform *b)
 {
 	kfree(b->h.items);
 	kfree(b);
+}
+
+void crush_destroy_bucket_uniform2(struct crush_bucket_uniform2 *b)
+{
+    kfree(b->h.items);
+    kfree(b);
 }
 
 void crush_destroy_bucket_list(struct crush_bucket_list *b)
@@ -82,18 +88,15 @@ void crush_destroy_bucket_straw2(struct crush_bucket_straw2 *b)
 	kfree(b);
 }
 
-void crush_destroy_bucket_uniform2(struct crush_bucket_uniform2 *b)
-{
-    kfree(b->h.items);
-    kfree(b);
-}
-
 void crush_destroy_bucket(struct crush_bucket *b)
 {
 	switch (b->alg) {
 	case CRUSH_BUCKET_UNIFORM:
 		crush_destroy_bucket_uniform((struct crush_bucket_uniform *)b);
 		break;
+    case CRUSH_BUCKET_UNIFORM2:
+        crush_destroy_bucket_uniform2((struct crush_bucket_uniform2 *)b);
+        break;
 	case CRUSH_BUCKET_LIST:
 		crush_destroy_bucket_list((struct crush_bucket_list *)b);
 		break;
@@ -105,9 +108,6 @@ void crush_destroy_bucket(struct crush_bucket *b)
 		break;
 	case CRUSH_BUCKET_STRAW2:
 		crush_destroy_bucket_straw2((struct crush_bucket_straw2 *)b);
-		break;
-    case CRUSH_BUCKET_UNIFORM2:
-		crush_destroy_bucket_uniform2((struct crush_bucket_uniform2 *)b);
 		break;
 	}
 }
