@@ -110,6 +110,7 @@ struct crush_rule {
  * 	list            O(n)       optimal      poor
  * 	straw2          O(n)       optimal      optimal
  * 	uniform2        O(1)       good         poor
+ * 	consthash       O(log n)   optimal      optimal
  */
 enum crush_algorithm {
        /*!
@@ -179,6 +180,11 @@ enum crush_algorithm {
          * optimal data movement between nested items when modified.
          */
 	CRUSH_BUCKET_STRAW2 = 5,
+
+	/*!
+	 * TODO Write documentation for consthash algorithm
+	 */
+	CRUSH_BUCKET_CONSTHASH = 6,
 
     /*!
 	 * TODO Write documentation for uniform2 algorithm
@@ -346,6 +352,27 @@ struct crush_bucket_straw2 {
 	__u32 *item_weights;   /*!< 16.16 fixed point weight for each item */
 };
 
+/**
+ * Internal node for the consistent hashing tree.
+ */
+struct crush_consthash_node {
+	struct crush_consthash_node *left, *right;
+	__u64 hash;    /*!< 64-bit key */
+	__s32 item_id; /*!< the item this node corresponds to */
+};
+
+/** @ingroup API
+ * TODO: write documentation for consthash buckets
+ */
+struct crush_bucket_consthash {
+	struct crush_bucket h; /*!< generic bucket information */
+	__u32 *item_weights;   /*!< 16.16 fixed point weight for each item */
+	__u32 *scaled_item_weights; /*!< integer, tree entry count */
+	struct crush_consthash_node *root;
+	__u32 tree_size;
+};
+
+
 /** @ingroup API
  *
  * A crush map define a hierarchy of crush_bucket that end with leaves
@@ -458,6 +485,11 @@ struct crush_map {
 	__u32 allowed_bucket_algs;
 
 	__u32 *choose_tries;
+
+	/*! Tunable. The default scale used to determine the number
+	 *  of nodes created for each item in consthash buckets.
+	 */
+	__s32 consthash_weight_scale;
 #endif
 	/*! @endcond */
 };
@@ -482,6 +514,7 @@ extern void crush_destroy_bucket_list(struct crush_bucket_list *b);
 extern void crush_destroy_bucket_tree(struct crush_bucket_tree *b);
 extern void crush_destroy_bucket_straw(struct crush_bucket_straw *b);
 extern void crush_destroy_bucket_straw2(struct crush_bucket_straw2 *b);
+extern void crush_destroy_bucket_consthash(struct crush_bucket_consthash *b);
 /** @ingroup API
  *
  * Deallocate a bucket created via crush_add_bucket().
@@ -524,6 +557,8 @@ static inline const char *crush_alg_name(int alg)
 		return "straw";
 	case CRUSH_BUCKET_STRAW2:
 		return "straw2";
+	case CRUSH_BUCKET_CONSTHASH:
+		return "consthash";
 	default:
 		return "unknown";
 	}

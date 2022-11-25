@@ -386,6 +386,33 @@ static int bucket_straw2_choose(const struct crush_bucket_straw2 *bucket,
 	return bucket->h.items[high];
 }
 
+static int consthash_successor(const struct crush_consthash_node *node, __u64 key,
+			       int successor, int found)
+{
+	if (!node) {
+		return successor;
+	}
+	if (key < node->hash) {
+		return consthash_successor(node->left, key, node->item_id, 1);
+	} else if (key > node->hash) {
+		if (!node->right && !found) {
+			return node->item_id;
+		}
+		return consthash_successor(node->right, key, successor, found);
+	} else {
+		return node->item_id;
+	}
+}
+
+static int bucket_consthash_choose(const struct crush_bucket_consthash *bucket,
+				   int x, int r)
+{
+	__u32 upperhalf = crush_hash32_2(bucket->h.hash, x, r);
+	__u32 lowerhalf = crush_hash32_2(bucket->h.hash, r, x);
+	__u64 hash = ((__u64) upperhalf << 32) | lowerhalf;
+	return consthash_successor(bucket->root, hash, 0, 0);
+}
+
 static int crush_bucket_choose(const struct crush_bucket *in,
 			       struct crush_work_bucket *work,
 			       int x, int r,
@@ -417,6 +444,10 @@ static int crush_bucket_choose(const struct crush_bucket *in,
 		return bucket_straw2_choose(
 			(const struct crush_bucket_straw2 *)in,
 			x, r, arg, position);
+	case CRUSH_BUCKET_CONSTHASH:
+		return bucket_consthash_choose(
+			(const struct crush_bucket_consthash *)in,
+			x, r);
 	default:
 		dprintk("unknown bucket %d alg %d\n", in->id, in->alg);
 		return in->items[0];

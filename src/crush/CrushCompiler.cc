@@ -621,6 +621,8 @@ int CrushCompiler::parse_bucket(iter_t const& i)
 	alg = CRUSH_BUCKET_STRAW;
       else if (a == "straw2")
 	alg = CRUSH_BUCKET_STRAW2;
+      else if (a == "consthash")
+	alg = CRUSH_BUCKET_CONSTHASH;
       else {
 	err << "unknown bucket alg '" << a << "'" << std::endl << std::endl;
 	return -EINVAL;
