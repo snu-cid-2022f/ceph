@@ -530,7 +530,7 @@ TEST_F(CRUSHTest, straw2_stddev)
   }
 }
 
-void test_reweight(int bucket_alg) {
+void test_reweight(int bucket_alg, int reweight_scale) {
   // when we adjust the weight of an item in the bucket,
   // we should *only* see movement from or to that item, never
   // between other items.
@@ -585,7 +585,7 @@ void test_reweight(int bucket_alg) {
   EXPECT_EQ(0, rule0);
 
   int changed = 1;
-  weights[changed] = weights[changed] / 10 * (rand() % 10);
+  weights[changed] = weights[changed] / 10 * reweight_scale;
 
   string root_name1("root1");
   int root1;
@@ -660,9 +660,13 @@ void test_reweight(int bucket_alg) {
 }
 
 TEST_F(CRUSHTest, straw2_reweight) {
-  test_reweight(CRUSH_BUCKET_STRAW2);
+  for (int i = 1; i < 10; i += 3) {
+    test_reweight(CRUSH_BUCKET_STRAW2, i);
+  }
 }
 
 TEST_F(CRUSHTest, consthash_reweight) {
-  test_reweight(CRUSH_BUCKET_CONSTHASH);
+  for (int i = 1; i < 10; i += 3) {
+    test_reweight(CRUSH_BUCKET_CONSTHASH, i);
+  }
 }
