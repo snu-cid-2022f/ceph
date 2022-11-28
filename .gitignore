@@ -85,4 +85,10 @@ GTAGS
 .cache
 
 # testing
-new_bucket_testing/**/*
+new_bucket_testing/compare/**/*
+new_bucket_testing/csvs/**/*
+new_bucket_testing/decompiled_maps/**/
+new_bucket_testing/edited_decompiled_maps/**/*
+new_bucket_testing/edited_maps/**/*
+new_bucket_testing/maps/**/*
+new_bucket_testing/utilization_diff/**/*
