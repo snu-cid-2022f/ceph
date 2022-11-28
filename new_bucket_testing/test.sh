@@ -77,9 +77,6 @@ function edit_crushmap() {
   python3 ./edit_crushmap.py
 }
 
-# function compile_crushmap() {
-#   python3 ./compile_crushmap.py
-# }
 
 
 
@@ -120,14 +117,14 @@ datacenter_array=("1000;consthash" "1000;straw2" "5000;consthash" "5000;straw2")
 
 
 build_crushmap "osd" "${osd_array[@]}"
-# build_crushmap "node" "${node_array[@]}"
+build_crushmap "node" "${node_array[@]}"
 decompile_crushmap "osd" "${osd_array[@]}"
-# decompile_crushmap "node" "${node_array[@]}"
+decompile_crushmap "node" "${node_array[@]}"
 
-# edit_crushmap
+edit_crushmap
 # compile_crushmap
 
 test_crushmap "osd" "2" "0" "1024" "${osd_array[@]}"
-# test_crushmap "node" "2" "0" "1024" "${node_array[@]}"
+test_crushmap "node" "2" "0" "1024" "${node_array[@]}"
 
 
