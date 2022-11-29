@@ -7,6 +7,7 @@
 
 #include "crush/crush.h"
 #include "builder.h"
+#include "hash.h"
 
 #define dprintk(args...) /* printf(args) */
 
@@ -227,6 +228,48 @@ err:
         return NULL;
 }
 
+/* uniform2 bucket */
+
+struct crush_bucket_uniform2 *
+crush_make_uniform2_bucket(int hash, int type, int size,
+                           int *items,
+                           int item_weight)
+{
+    int i;
+    struct crush_bucket_uniform2 *bucket;
+
+    bucket = malloc(sizeof(*bucket));
+    if (!bucket)
+        return NULL;
+    memset(bucket, 0, sizeof(*bucket));
+    bucket->h.alg = CRUSH_BUCKET_UNIFORM2;
+    bucket->h.hash = hash;
+    bucket->h.type = type;
+    bucket->h.size = size;
+
+    if (crush_multiplication_is_unsafe(size, item_weight))
+        goto err;
+
+    bucket->h.weight = size * item_weight;
+    bucket->item_weight = item_weight;
+
+    if (size == 0) {
+        return bucket;
+    }
+    bucket->h.items = malloc(sizeof(__s32)*size);
+
+    if (!bucket->h.items)
+        goto err;
+
+    for (i=0; i<size; i++)
+        bucket->h.items[i] = items[i];
+
+    return bucket;
+    err:
+    free(bucket->h.items);
+    free(bucket);
+    return NULL;
+}
 
 /* list bucket */
 
@@ -638,7 +681,146 @@ err:
         return NULL;
 }
 
+/* consthash bucket */
 
+struct crush_consthash_node *
+crush_consthash_tree_insert(struct crush_consthash_node *node,
+			    __u64 hash, int id, __u32 *count)
+{
+	if (!node) {
+		node = malloc(sizeof(struct crush_consthash_node));
+		if (node) {
+			node->hash = hash;
+			node->item_id = id;
+			node->left = node->right = NULL;
+		}
+		++(*count);
+		return node;
+	}
+
+	if (hash < node->hash) {
+		node->left = crush_consthash_tree_insert(node->left, hash, id, count);
+	} else if (hash > node->hash) {
+		node->right = crush_consthash_tree_insert(node->right, hash, id, count);
+	}
+	return node; /* for now, do nothing when it is a duplicate */
+}
+
+struct crush_consthash_node *
+crush_consthash_tree_remove(struct crush_consthash_node *node,
+			    __u64 hash, __u32 *count)
+{
+	if (!node) {
+		return NULL;
+	}
+	if (hash < node->hash) {
+		node->left = crush_consthash_tree_remove(node->left, hash, count);
+	} else if (hash > node->hash) {
+		node->right = crush_consthash_tree_remove(node->right, hash, count);
+	} else {
+		struct crush_consthash_node *tmp;
+		if (!node->left) {
+			tmp = node->right;
+		} else if (!node->right) {
+			tmp = node->left;
+		} else {
+			/* find the smallest node in right subtree */
+			struct crush_consthash_node **parent = &node->right;
+			tmp = node->right;
+			while (tmp->left) {
+				parent = &tmp->left;
+				tmp = tmp->left;
+			}
+			*parent = tmp->right;
+			tmp->left = node->left;
+			tmp->right = node->right;
+		}
+		free(node);
+		--(*count);
+		return tmp;
+	}
+	return node;
+}
+
+void crush_consthash_adjust_item(struct crush_bucket_consthash *bucket,
+				 int item_id, __u32 oldweight, __u32 newweight)
+{
+	__u32 lowerhalf = 0, upperhalf = 0;
+	__u32 i;
+	for (i = 0; i < oldweight || i < newweight; i++) {
+		lowerhalf = crush_hash32_4(bucket->h.hash, lowerhalf, upperhalf, item_id, i);
+		upperhalf = crush_hash32_4(bucket->h.hash, i, upperhalf, lowerhalf, item_id);
+		__u64 hash = ((__u64) upperhalf << 32) | lowerhalf;
+
+		if (i >= oldweight) { /* weight increased, add entries */
+			bucket->root = crush_consthash_tree_insert(bucket->root, hash, item_id, &bucket->tree_size);
+		} else if (i >= newweight) { /* weight decreased, remove entries */
+			bucket->root = crush_consthash_tree_remove(bucket->root, hash, &bucket->tree_size);
+		}
+	}
+}
+
+int crush_consthash_scale_weight(int weight, int consthash_weight_scale)
+{
+	int scaled_weight = (weight / (1 << 8)) * consthash_weight_scale;
+	return scaled_weight / (1 << 8) + 1;
+}
+
+struct crush_bucket_consthash *
+crush_make_consthash_bucket(struct crush_map *map,
+			    int hash,
+			    int type,
+			    int size,
+			    int *items,
+			    int *weights)
+{
+	struct crush_bucket_consthash *bucket;
+	int i;
+
+	bucket = malloc(sizeof(*bucket));
+	if (!bucket) {
+		return NULL;
+	}
+
+	memset(bucket, 0, sizeof(*bucket));
+	bucket->h.alg = CRUSH_BUCKET_CONSTHASH;
+	bucket->h.hash = hash;
+	bucket->h.type = type;
+	bucket->h.size = size;
+
+	if (size == 0) {
+		return bucket;
+	}
+
+	bucket->h.items = malloc(sizeof(__s32) * size);
+	if (!bucket->h.items) {
+		goto err;
+	}
+	bucket->item_weights = malloc(sizeof(__u32) * size);
+	if (!bucket->item_weights) {
+		goto err;
+	}
+	bucket->scaled_item_weights = malloc(sizeof(__u32) * size);
+	if (!bucket->scaled_item_weights) {
+		goto err;
+	}
+
+	for (i = 0; i < size; i++) {
+		bucket->h.items[i] = items[i];
+		bucket->h.weight += weights[i];
+		bucket->item_weights[i] = weights[i];
+		bucket->scaled_item_weights[i] = crush_consthash_scale_weight(weights[i], map->consthash_weight_scale);
+		crush_consthash_adjust_item(bucket, items[i], 0, bucket->scaled_item_weights[i]);
+	}
+
+	return bucket;
+err:
+	free(bucket->scaled_item_weights);
+	free(bucket->item_weights);
+	free(bucket->h.items);
+	free(bucket);
+	return NULL;
+}
 
 struct crush_bucket*
 crush_make_bucket(struct crush_map *map,
@@ -656,6 +838,13 @@ crush_make_bucket(struct crush_map *map,
 			item_weight = 0;
 		return (struct crush_bucket *)crush_make_uniform_bucket(hash, type, size, items, item_weight);
 
+    case CRUSH_BUCKET_UNIFORM2:
+        if (size && weights)
+            item_weight = weights[0];
+        else
+            item_weight = 0;
+        return (struct crush_bucket *)crush_make_uniform2_bucket(hash, type, size, items, item_weight);
+
 	case CRUSH_BUCKET_LIST:
 		return (struct crush_bucket *)crush_make_list_bucket(hash, type, size, items, weights);
 
@@ -666,6 +855,8 @@ crush_make_bucket(struct crush_map *map,
 		return (struct crush_bucket *)crush_make_straw_bucket(map, hash, type, size, items, weights);
 	case CRUSH_BUCKET_STRAW2:
 		return (struct crush_bucket *)crush_make_straw2_bucket(map, hash, type, size, items, weights);
+	case CRUSH_BUCKET_CONSTHASH:
+		return (struct crush_bucket *) crush_make_consthash_bucket(map, hash, type, size, items, weights);
 	}
 	return 0;
 }
@@ -702,6 +893,37 @@ int crush_add_uniform_bucket_item(struct crush_bucket_uniform *bucket, int item,
         bucket->h.size++;
 
         return 0;
+}
+
+int crush_add_uniform2_bucket_item(struct crush_bucket_uniform2 *bucket, int item, int weight)
+{
+    int newsize = bucket->h.size + 1;
+    void *_realloc = NULL;
+
+    /* In such situation 'CRUSH_BUCKET_UNIFORM', the weight
+       provided for the item should be the same as
+       bucket->item_weight defined with 'crush_make_bucket'. This
+       assumption is enforced by the return value which is always
+       0. */
+    if (bucket->item_weight != weight) {
+        return -EINVAL;
+    }
+
+    if ((_realloc = realloc(bucket->h.items, sizeof(__s32)*newsize)) == NULL) {
+        return -ENOMEM;
+    } else {
+        bucket->h.items = _realloc;
+    }
+
+    bucket->h.items[newsize-1] = item;
+
+    if (crush_addition_is_unsafe(bucket->h.weight, weight))
+        return -ERANGE;
+
+    bucket->h.weight += weight;
+    bucket->h.size++;
+
+    return 0;
 }
 
 int crush_add_list_bucket_item(struct crush_bucket_list *bucket, int item, int weight)
@@ -865,12 +1087,56 @@ int crush_add_straw2_bucket_item(struct crush_map *map,
 	return 0;
 }
 
+int crush_add_consthash_bucket_item(struct crush_map *map,
+				    struct crush_bucket_consthash *bucket,
+				    int item, int weight)
+{
+	int newsize = bucket->h.size + 1;
+	int newweight;
+
+	void *_realloc = NULL;
+
+	if ((_realloc = realloc(bucket->h.items, sizeof(__s32) * newsize)) == NULL) {
+		return -ENOMEM;
+	} else {
+		bucket->h.items = _realloc;
+	}
+	if ((_realloc = realloc(bucket->item_weights, sizeof(__u32) * newsize)) == NULL) {
+		return -ENOMEM;
+	} else {
+		bucket->item_weights = _realloc;
+	}
+	if ((_realloc = realloc(bucket->scaled_item_weights, sizeof(__u32) * newsize)) == NULL) {
+		return -ENOMEM;
+	} else {
+		bucket->scaled_item_weights = _realloc;
+	}
+
+	bucket->h.items[newsize - 1] = item;
+	bucket->item_weights[newsize - 1] = weight;
+	newweight = crush_consthash_scale_weight(weight, map->consthash_weight_scale);
+	bucket->scaled_item_weights[newsize - 1] = newweight;
+
+	if (crush_addition_is_unsafe(bucket->h.weight, weight)) {
+		return -ERANGE;
+	}
+
+	bucket->h.weight += weight;
+	bucket->h.size++;
+
+	crush_consthash_adjust_item(bucket, item, 0, newweight);
+
+	return 0;
+}
+
 int crush_bucket_add_item(struct crush_map *map,
 			  struct crush_bucket *b, int item, int weight)
 {
 	switch (b->alg) {
 	case CRUSH_BUCKET_UNIFORM:
 		return crush_add_uniform_bucket_item((struct crush_bucket_uniform *)b, item, weight);
+    case CRUSH_BUCKET_UNIFORM2:
+        return crush_add_uniform2_bucket_item((struct crush_bucket_uniform2 *)b, item, weight);
 	case CRUSH_BUCKET_LIST:
 		return crush_add_list_bucket_item((struct crush_bucket_list *)b, item, weight);
 	case CRUSH_BUCKET_TREE:
@@ -879,6 +1145,8 @@ int crush_bucket_add_item(struct crush_map *map,
 		return crush_add_straw_bucket_item(map, (struct crush_bucket_straw *)b, item, weight);
 	case CRUSH_BUCKET_STRAW2:
 		return crush_add_straw2_bucket_item(map, (struct crush_bucket_straw2 *)b, item, weight);
+	case CRUSH_BUCKET_CONSTHASH:
+		return crush_add_consthash_bucket_item(map, (struct crush_bucket_consthash *)b, item, weight);
 	default:
 		return -1;
 	}
@@ -912,6 +1180,34 @@ int crush_remove_uniform_bucket_item(struct crush_bucket_uniform *bucket, int it
 		bucket->h.items = _realloc;
 	}
 	return 0;
+}
+
+int crush_remove_uniform2_bucket_item(struct crush_bucket_uniform2 *bucket, int item)
+{
+    unsigned i, j;
+    int newsize;
+    void *_realloc = NULL;
+
+    for (i = 0; i < bucket->h.size; i++)
+        if (bucket->h.items[i] == item)
+            break;
+    if (i == bucket->h.size)
+        return -ENOENT;
+
+    for (j = i; j < bucket->h.size; j++)
+        bucket->h.items[j] = bucket->h.items[j+1];
+    newsize = --bucket->h.size;
+    if (bucket->item_weight < bucket->h.weight)
+        bucket->h.weight -= bucket->item_weight;
+    else
+        bucket->h.weight = 0;
+
+    if ((_realloc = realloc(bucket->h.items, sizeof(__s32)*newsize)) == NULL) {
+        return -ENOMEM;
+    } else {
+        bucket->h.items = _realloc;
+    }
+    return 0;
 }
 
 int crush_remove_list_bucket_item(struct crush_bucket_list *bucket, int item)
@@ -1118,11 +1414,70 @@ int crush_remove_straw2_bucket_item(struct crush_map *map,
 	return 0;
 }
 
+
+int crush_remove_consthash_bucket_item(struct crush_map *map,
+				       struct crush_bucket_consthash *bucket, int item)
+{
+	int newsize = bucket->h.size - 1;
+	int oldweight = 0;
+	unsigned i, j;
+
+	for (i = 0; i < bucket->h.size; i++) {
+		if (bucket->h.items[i] == item) {
+			oldweight = bucket->scaled_item_weights[i];
+			if (bucket->item_weights[i] < bucket->h.weight) {
+				bucket->h.weight -= bucket->item_weights[i];
+			} else {
+				bucket->h.weight = 0;
+			}
+			for (j = i; j < bucket->h.size - 1; j++) {
+				bucket->h.items[j] = bucket->h.items[j + 1];
+				bucket->item_weights[j] = bucket->item_weights[j + 1];
+				bucket->scaled_item_weights[j] = bucket->scaled_item_weights[j + 1];
+			}
+			break;
+		}
+	}
+	if (i == bucket->h.size) {
+		return -ENOENT;
+	}
+
+	crush_consthash_adjust_item(bucket, item, oldweight, 0);
+
+	bucket->h.size--;
+	if (!newsize) {
+		/* don't bother reallocating a 0-length array. */
+		return 0;
+	}
+
+	void *_realloc = NULL;
+
+	if ((_realloc = realloc(bucket->h.items, sizeof(__s32)*newsize)) == NULL) {
+		return -ENOMEM;
+	} else {
+		bucket->h.items = _realloc;
+	}
+	if ((_realloc = realloc(bucket->item_weights, sizeof(__u32)*newsize)) == NULL) {
+		return -ENOMEM;
+	} else {
+		bucket->item_weights = _realloc;
+	}
+	if ((_realloc = realloc(bucket->scaled_item_weights, sizeof(__u32)*newsize)) == NULL) {
+		return -ENOMEM;
+	} else {
+		bucket->scaled_item_weights = _realloc;
+	}
+
+	return 0;
+}
+
 int crush_bucket_remove_item(struct crush_map *map, struct crush_bucket *b, int item)
 {
 	switch (b->alg) {
 	case CRUSH_BUCKET_UNIFORM:
 		return crush_remove_uniform_bucket_item((struct crush_bucket_uniform *)b, item);
+    case CRUSH_BUCKET_UNIFORM2:
+        return crush_remove_uniform2_bucket_item((struct crush_bucket_uniform2 *)b, item);
 	case CRUSH_BUCKET_LIST:
 		return crush_remove_list_bucket_item((struct crush_bucket_list *)b, item);
 	case CRUSH_BUCKET_TREE:
@@ -1131,6 +1486,8 @@ int crush_bucket_remove_item(struct crush_map *map, struct crush_bucket *b, int 
 		return crush_remove_straw_bucket_item(map, (struct crush_bucket_straw *)b, item);
 	case CRUSH_BUCKET_STRAW2:
 		return crush_remove_straw2_bucket_item(map, (struct crush_bucket_straw2 *)b, item);
+	case CRUSH_BUCKET_CONSTHASH:
+		return crush_remove_consthash_bucket_item(map, (struct crush_bucket_consthash *)b, item);
 	default:
 		return -1;
 	}
@@ -1147,6 +1504,16 @@ int crush_adjust_uniform_bucket_item_weight(struct crush_bucket_uniform *bucket,
 	bucket->h.weight = bucket->item_weight * bucket->h.size;
 
 	return diff;
+}
+
+int crush_adjust_uniform2_bucket_item_weight(struct crush_bucket_uniform2 *bucket, int item, int weight)
+{
+    int diff = (weight - bucket->item_weight) * bucket->h.size;
+
+    bucket->item_weight = weight;
+    bucket->h.weight = bucket->item_weight * bucket->h.size;
+
+    return diff;
 }
 
 int crush_adjust_list_bucket_item_weight(struct crush_bucket_list *bucket, int item, int weight)
@@ -1243,6 +1610,35 @@ int crush_adjust_straw2_bucket_item_weight(struct crush_map *map,
 	return diff;
 }
 
+int crush_adjust_consthash_bucket_item_weight(struct crush_map *map,
+					      struct crush_bucket_consthash *bucket,
+					      int item, int weight)
+{
+	unsigned idx;
+	int diff;
+	int oldweight, newweight;
+
+	for (idx = 0; idx < bucket->h.size; idx++) {
+		if (bucket->h.items[idx] == item) {
+			break;
+		}
+	}
+	if (idx == bucket->h.size) {
+		return 0;
+	}
+
+	oldweight = bucket->scaled_item_weights[idx];
+	newweight = crush_consthash_scale_weight(weight, map->consthash_weight_scale);
+	crush_consthash_adjust_item(bucket, item, oldweight, newweight);
+
+	diff = weight - bucket->item_weights[idx];
+	bucket->item_weights[idx] = weight;
+	bucket->scaled_item_weights[idx] = newweight;
+	bucket->h.weight += diff;
+
+	return diff;
+}
+
 int crush_bucket_adjust_item_weight(struct crush_map *map,
 				    struct crush_bucket *b,
 				    int item, int weight)
@@ -1251,6 +1647,9 @@ int crush_bucket_adjust_item_weight(struct crush_map *map,
 	case CRUSH_BUCKET_UNIFORM:
 		return crush_adjust_uniform_bucket_item_weight((struct crush_bucket_uniform *)b,
 							     item, weight);
+    case CRUSH_BUCKET_UNIFORM2:
+        return crush_adjust_uniform2_bucket_item_weight((struct crush_bucket_uniform2 *)b,
+                                 item, weight);
 	case CRUSH_BUCKET_LIST:
 		return crush_adjust_list_bucket_item_weight((struct crush_bucket_list *)b,
 							    item, weight);
@@ -1265,6 +1664,10 @@ int crush_bucket_adjust_item_weight(struct crush_map *map,
 		return crush_adjust_straw2_bucket_item_weight(map,
 							      (struct crush_bucket_straw2 *)b,
 							     item, weight);
+	case CRUSH_BUCKET_CONSTHASH:
+		return crush_adjust_consthash_bucket_item_weight(map,
+								 (struct crush_bucket_consthash *)b,
+								 item, weight);
 	default:
 		return -1;
 	}
@@ -1298,6 +1701,34 @@ static int crush_reweight_uniform_bucket(struct crush_map *map, struct crush_buc
 	bucket->h.weight = bucket->item_weight * bucket->h.size;
 
 	return 0;
+}
+
+static int crush_reweight_uniform2_bucket(struct crush_map *map, struct crush_bucket_uniform2 *bucket)
+{
+    unsigned i;
+    unsigned sum = 0, n = 0, leaves = 0;
+
+    for (i = 0; i < bucket->h.size; i++) {
+        int id = bucket->h.items[i];
+        if (id < 0) {
+            struct crush_bucket *c = map->buckets[-1-id];
+            crush_reweight_bucket(map, c);
+
+            if (crush_addition_is_unsafe(sum, c->weight))
+                return -ERANGE;
+
+            sum += c->weight;
+            n++;
+        } else {
+            leaves++;
+        }
+    }
+
+    if (n > leaves)
+        bucket->item_weight = sum / n;  // more bucket children than leaves, average!
+    bucket->h.weight = bucket->item_weight * bucket->h.size;
+
+    return 0;
 }
 
 static int crush_reweight_list_bucket(struct crush_map *map, struct crush_bucket_list *bucket)
@@ -1392,11 +1823,36 @@ static int crush_reweight_straw2_bucket(struct crush_map *map, struct crush_buck
 	return 0;
 }
 
+static int crush_reweight_consthash_bucket(struct crush_map *map, struct crush_bucket_consthash *bucket)
+{
+	unsigned i;
+
+	bucket->h.weight = 0;
+	for (i = 0; i < bucket->h.size; i++) {
+		int id = bucket->h.items[i];
+		if (id < 0) {
+			struct crush_bucket *c = map->buckets[-1-id];
+			crush_reweight_bucket(map, c);
+			bucket->item_weights[i] = c->weight;
+			bucket->scaled_item_weights[i] = crush_consthash_scale_weight(c->weight, map->consthash_weight_scale);
+		}
+
+		if (crush_addition_is_unsafe(bucket->h.weight, bucket->item_weights[i]))
+			return -ERANGE;
+
+		bucket->h.weight += bucket->item_weights[i];
+	}
+
+	return 0;
+}
+
 int crush_reweight_bucket(struct crush_map *map, struct crush_bucket *b)
 {
 	switch (b->alg) {
 	case CRUSH_BUCKET_UNIFORM:
 		return crush_reweight_uniform_bucket(map, (struct crush_bucket_uniform *)b);
+    case CRUSH_BUCKET_UNIFORM2:
+        return crush_reweight_uniform2_bucket(map, (struct crush_bucket_uniform2 *)b);
 	case CRUSH_BUCKET_LIST:
 		return crush_reweight_list_bucket(map, (struct crush_bucket_list *)b);
 	case CRUSH_BUCKET_TREE:
@@ -1405,6 +1861,8 @@ int crush_reweight_bucket(struct crush_map *map, struct crush_bucket *b)
 		return crush_reweight_straw_bucket(map, (struct crush_bucket_straw *)b);
 	case CRUSH_BUCKET_STRAW2:
 		return crush_reweight_straw2_bucket(map, (struct crush_bucket_straw2 *)b);
+	case CRUSH_BUCKET_CONSTHASH:
+		return crush_reweight_consthash_bucket(map, (struct crush_bucket_consthash *)b);
 	default:
 		return -1;
 	}
@@ -1524,7 +1982,9 @@ void set_optimal_crush_map(struct crush_map *map) {
   map->chooseleaf_stable = 1;
   map->allowed_bucket_algs = (
     (1 << CRUSH_BUCKET_UNIFORM) |
+    (1 << CRUSH_BUCKET_UNIFORM2) |
     (1 << CRUSH_BUCKET_LIST) |
     (1 << CRUSH_BUCKET_STRAW) |
-    (1 << CRUSH_BUCKET_STRAW2));
+    (1 << CRUSH_BUCKET_STRAW2) |
+    (1 << CRUSH_BUCKET_CONSTHASH));
 }

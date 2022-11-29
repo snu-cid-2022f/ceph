@@ -2949,6 +2949,10 @@ void CrushWrapper::encode(bufferlist& bl, uint64_t features) const
       encode((reinterpret_cast<crush_bucket_uniform*>(crush->buckets[i]))->item_weight, bl);
       break;
 
+    case CRUSH_BUCKET_UNIFORM2:
+      encode((reinterpret_cast<crush_bucket_uniform2*>(crush->buckets[i]))->item_weight, bl);
+      break;
+
     case CRUSH_BUCKET_LIST:
       for (unsigned j=0; j<crush->buckets[i]->size; j++) {
 	encode((reinterpret_cast<crush_bucket_list*>(crush->buckets[i]))->item_weights[j], bl);
@@ -2983,6 +2987,31 @@ void CrushWrapper::encode(bufferlist& bl, uint64_t features) const
 	}
       }
       break;
+
+    case CRUSH_BUCKET_CONSTHASH: {
+      crush_bucket_consthash *bucket = reinterpret_cast<crush_bucket_consthash *>(crush->buckets[i]);
+      for (unsigned j = 0; j < bucket->h.size; j++) {
+        encode(bucket->item_weights[j], bl);
+        encode(bucket->scaled_item_weights[j], bl);
+      }
+      encode(bucket->tree_size, bl);
+      /* preorder tree traversal */
+      std::vector<crush_consthash_node *> stack;
+      stack.push_back(bucket->root);
+      while (!stack.empty()) {
+        crush_consthash_node *node = stack.back();
+        stack.pop_back();
+        if (!node) {
+          continue;
+        }
+        encode((__u32) (node->hash >> 32), bl);
+        encode((__u32) node->hash, bl);
+        encode(node->item_id, bl);
+        stack.push_back(node->right);
+        stack.push_back(node->left);
+      }
+    }
+    break;
 
     default:
       ceph_abort();
@@ -3082,6 +3111,7 @@ void CrushWrapper::encode(bufferlist& bl, uint64_t features) const
       }
     }
   }
+  encode(crush->consthash_weight_scale, bl);
 }
 
 static void decode_32_or_64_string_map(map<int32_t,string>& m, bufferlist::const_iterator& blp)
@@ -3232,6 +3262,9 @@ void CrushWrapper::decode(bufferlist::const_iterator& blp)
 	choose_args[choose_args_index] = arg_map;
       }
     }
+    if (!blp.end()) {
+      decode(crush->consthash_weight_scale, blp);
+    }
     update_choose_args(nullptr); // in case we decode a legacy "corrupted" map
     finalize();
   }
@@ -3256,6 +3289,9 @@ void CrushWrapper::decode_crush_bucket(crush_bucket** bptr, bufferlist::const_it
   case CRUSH_BUCKET_UNIFORM:
     size = sizeof(crush_bucket_uniform);
     break;
+  case CRUSH_BUCKET_UNIFORM2:
+    size = sizeof(crush_bucket_uniform2);
+    break;
   case CRUSH_BUCKET_LIST:
     size = sizeof(crush_bucket_list);
     break;
@@ -3267,6 +3303,9 @@ void CrushWrapper::decode_crush_bucket(crush_bucket** bptr, bufferlist::const_it
     break;
   case CRUSH_BUCKET_STRAW2:
     size = sizeof(crush_bucket_straw2);
+    break;
+  case CRUSH_BUCKET_CONSTHASH:
+    size = sizeof(crush_bucket_consthash);
     break;
   default:
     {
@@ -3293,6 +3332,10 @@ void CrushWrapper::decode_crush_bucket(crush_bucket** bptr, bufferlist::const_it
   switch (bucket->alg) {
   case CRUSH_BUCKET_UNIFORM:
     decode((reinterpret_cast<crush_bucket_uniform*>(bucket))->item_weight, blp);
+    break;
+
+  case CRUSH_BUCKET_UNIFORM2:
+    decode((reinterpret_cast<crush_bucket_uniform2*>(bucket))->item_weight, blp);
     break;
 
   case CRUSH_BUCKET_LIST: {
@@ -3333,6 +3376,42 @@ void CrushWrapper::decode_crush_bucket(crush_bucket** bptr, bufferlist::const_it
     cbs->item_weights = (__u32*)calloc(1, bucket->size * sizeof(__u32));
     for (unsigned j = 0; j < bucket->size; ++j) {
       decode(cbs->item_weights[j], blp);
+    }
+    break;
+  }
+
+  case CRUSH_BUCKET_CONSTHASH: {
+    crush_bucket_consthash *cbc = reinterpret_cast<crush_bucket_consthash*>(bucket);
+    cbc->item_weights = (__u32 *) calloc(1, bucket->size * sizeof(__u32));
+    cbc->scaled_item_weights = (__u32 *) calloc(1, bucket->size * sizeof(__u32));
+    for (unsigned j = 0; j < bucket->size; ++j) {
+      decode(cbc->item_weights[j], blp);
+      decode(cbc->scaled_item_weights[j], blp);
+    }
+    decode(cbc->tree_size, blp);
+    /* preorder deserializtion */
+    std::vector<crush_consthash_node *> stack;
+    for (unsigned j = 0; j < cbc->tree_size; ++j) {
+      crush_consthash_node *curr = (crush_consthash_node *) malloc(sizeof(crush_consthash_node));
+      curr->left = curr->right = NULL;
+      __u32 upper, lower;
+      decode(upper, blp);
+      decode(lower, blp);
+
+      curr->hash = ((__u64) upper << 32) | lower;
+      decode(curr->item_id, blp);
+
+      if (j == 0) {
+        cbc->root = curr;
+      } else {
+        crush_consthash_node **dest = &stack.back()->left;
+        while (!stack.empty() && stack.back()->hash < curr->hash) {
+          dest = &stack.back()->right;
+          stack.pop_back();
+        }
+        *dest = curr;
+      }
+      stack.push_back(curr);
     }
     break;
   }
@@ -3489,6 +3568,7 @@ void CrushWrapper::dump_tunables(Formatter *f) const
   f->dump_int("chooseleaf_stable", get_chooseleaf_stable());
   f->dump_int("straw_calc_version", get_straw_calc_version());
   f->dump_int("allowed_bucket_algs", get_allowed_bucket_algs());
+  f->dump_int("consthash_weight_scale", get_consthash_weight_scale());
 
   // be helpful about it
   if (has_jewel_tunables())

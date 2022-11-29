@@ -115,6 +115,31 @@ static int bucket_uniform_choose(const struct crush_bucket_uniform *bucket,
 	return bucket_perm_choose(&bucket->h, work, x, r);
 }
 
+static int bucket_uniform2_choose(const struct crush_bucket_uniform2 *bucket,
+                                  int x, int r)
+{
+    __u32 i, res;
+    __u32 p;
+    __u64 h = (__u64)crush_hash32_3(bucket->h.hash, x, bucket->h.id, r);
+    __u64 rem = (U32_MAX - bucket->h.size + 1) % bucket->h.size;
+    __u64 l = U32_MAX / bucket->h.size + 1;
+
+    if (h < rem * l) {
+        res = h / l;
+    } else {
+        p = h - rem * l;
+        res = p / (l - 1) + rem;
+    }
+
+    if (res % 2 == 0) {
+        i = res / 2;
+    } else {
+        i = bucket->h.size - (res + 1) / 2;
+    }
+
+    return bucket->h.items[i];
+}
+
 /* list */
 static int bucket_list_choose(const struct crush_bucket_list *bucket,
 			      int x, int r)
@@ -361,6 +386,32 @@ static int bucket_straw2_choose(const struct crush_bucket_straw2 *bucket,
 	return bucket->h.items[high];
 }
 
+static int consthash_successor(const struct crush_consthash_node *node, __u64 key,
+			       int successor, int found)
+{
+	if (!node) {
+		return successor;
+	}
+	if (key < node->hash) {
+		return consthash_successor(node->left, key, node->item_id, 1);
+	} else if (key > node->hash) {
+		if (!node->right && !found) {
+			return node->item_id;
+		}
+		return consthash_successor(node->right, key, successor, found);
+	} else {
+		return node->item_id;
+	}
+}
+
+static int bucket_consthash_choose(const struct crush_bucket_consthash *bucket,
+				   int x, int r)
+{
+	__u32 upperhalf = crush_hash32_2(bucket->h.hash, x, r);
+	__u32 lowerhalf = crush_hash32_2(bucket->h.hash, r, x);
+	__u64 hash = ((__u64) upperhalf << 32) | lowerhalf;
+	return consthash_successor(bucket->root, hash, 0, 0);
+}
 
 static int crush_bucket_choose(const struct crush_bucket *in,
 			       struct crush_work_bucket *work,
@@ -375,6 +426,10 @@ static int crush_bucket_choose(const struct crush_bucket *in,
 		return bucket_uniform_choose(
 			(const struct crush_bucket_uniform *)in,
 			work, x, r);
+    case CRUSH_BUCKET_UNIFORM2:
+		return bucket_uniform2_choose(
+			(const struct crush_bucket_uniform2 *)in,
+			x, r);
 	case CRUSH_BUCKET_LIST:
 		return bucket_list_choose((const struct crush_bucket_list *)in,
 					  x, r);
@@ -389,6 +444,10 @@ static int crush_bucket_choose(const struct crush_bucket *in,
 		return bucket_straw2_choose(
 			(const struct crush_bucket_straw2 *)in,
 			x, r, arg, position);
+	case CRUSH_BUCKET_CONSTHASH:
+		return bucket_consthash_choose(
+			(const struct crush_bucket_consthash *)in,
+			x, r);
 	default:
 		dprintk("unknown bucket %d alg %d\n", in->id, in->alg);
 		return in->items[0];

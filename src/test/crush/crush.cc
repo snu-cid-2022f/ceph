@@ -530,8 +530,8 @@ TEST_F(CRUSHTest, straw2_stddev)
   }
 }
 
-TEST_F(CRUSHTest, straw2_reweight) {
-  // when we adjust the weight of an item in a straw2 bucket,
+void test_reweight(int bucket_alg, int reweight_scale) {
+  // when we adjust the weight of an item in the bucket,
   // we should *only* see movement from or to that item, never
   // between other items.
   int weights[] = {
@@ -574,7 +574,7 @@ TEST_F(CRUSHTest, straw2_reweight) {
   string root_name0("root0");
   int root0;
   crush_bucket *b0 = crush_make_bucket(c->get_crush_map(),
-				       CRUSH_BUCKET_STRAW2, CRUSH_HASH_RJENKINS1,
+				       bucket_alg, CRUSH_HASH_RJENKINS1,
 				       ROOT_TYPE, n, items, weights);
   EXPECT_EQ(0, crush_add_bucket(c->get_crush_map(), 0, b0, &root0));
   EXPECT_EQ(0, c->set_item_name(root0, root_name0));
@@ -585,12 +585,12 @@ TEST_F(CRUSHTest, straw2_reweight) {
   EXPECT_EQ(0, rule0);
 
   int changed = 1;
-  weights[changed] = weights[changed] / 10 * (rand() % 10);
+  weights[changed] = weights[changed] / 10 * reweight_scale;
 
   string root_name1("root1");
   int root1;
   crush_bucket *b1 = crush_make_bucket(c->get_crush_map(),
-				       CRUSH_BUCKET_STRAW2, CRUSH_HASH_RJENKINS1,
+				       bucket_alg, CRUSH_HASH_RJENKINS1,
 				       ROOT_TYPE, n, items, weights);
   EXPECT_EQ(0, crush_add_bucket(c->get_crush_map(), 0, b1, &root1));
   EXPECT_EQ(0, c->set_item_name(root1, root_name1));
@@ -656,5 +656,17 @@ TEST_F(CRUSHTest, straw2_reweight) {
     double p = 1.0 / (double)n;
     double estddev = sqrt((double)total * p * (1.0 - p));
     cout << "     vs " << estddev << std::endl;
+  }
+}
+
+TEST_F(CRUSHTest, straw2_reweight) {
+  for (int i = 1; i < 10; i += 3) {
+    test_reweight(CRUSH_BUCKET_STRAW2, i);
+  }
+}
+
+TEST_F(CRUSHTest, consthash_reweight) {
+  for (int i = 1; i < 10; i += 3) {
+    test_reweight(CRUSH_BUCKET_CONSTHASH, i);
   }
 }
